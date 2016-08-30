@@ -1,3 +1,6 @@
+require 'pbs'
+require 'moab'
+
 module OodReservations
   module Queries
     # Object used for querying reservations on a batch server that uses Torque
@@ -13,8 +16,8 @@ module OodReservations
       def self.match(cluster:, **_)
         cluster.resource_mgr_server? &&
           cluster.scheduler_server? &&
-          cluster.resource_mgr_server.respond_to?(:pbs) &&
-          cluster.scheduler_server.respond_to?(:moab)
+          cluster.resource_mgr_server.is_a?(OodCluster::Servers::Torque) &&
+          cluster.scheduler_server.is_a?(OodCluster::Servers::Moab)
       end
 
       # Queries the Moab scheduler for a given reservation and builds
@@ -25,7 +28,7 @@ module OodReservations
       def reservation(id:)
         xml = moab(@cluster).call("mrsvctl", "-q", "#{id}")
         parse_rsv_xml @cluster, xml.xpath(rsv_xpath)
-      rescue OodCluster::Servers::Moab::Scheduler::Error => e
+      rescue Moab::Error => e
         raise Error, e.message
       end
 
@@ -37,19 +40,21 @@ module OodReservations
       def reservations
         xml = moab(@cluster).call("mrsvctl", "-q", "ALL")
         xml.xpath(rsv_xpath).map {|r_xml| parse_rsv_xml @cluster, r_xml}
-      rescue OodCluster::Servers::Moab::Scheduler::Error
+      rescue Moab::Error => e
         raise Error, e.message
       end
 
       private
         # PBS object used to communicate with Torque batch server
         def pbs(cluster)
-          cluster.resource_mgr_server.pbs
+          s = cluster.resource_mgr_server
+          PBS::Batch.new(host: s.host, lib: s.lib, bin: s.bin)
         end
 
         # Moab object used to communicate with Moab scheduler server
         def moab(cluster)
-          cluster.scheduler_server.moab
+          s = cluster.scheduler_server
+          Moab::Scheduler.new(host: s.host, lib: s.lib, bin: s.bin, moabhomedir: s.moabhomedir)
         end
 
         # XPath used to find reservations from xml
