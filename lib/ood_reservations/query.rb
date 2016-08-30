@@ -1,3 +1,5 @@
+require 'ood_cluster'
+
 module OodReservations
   # Object used to communicate with a batch server to retrieve reservation
   # information for current user
